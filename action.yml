@@ -1,5 +1,5 @@
-name: Security scan (simpli-guard)
-description: Code, dependency, secret, IaC, GitHub Actions workflow, container and live-surface scanning with noise reduction.
+name: Simpli Gatehouse Guard
+description: "Gatehouse security gate: code, dependency, secret, IaC, workflow, container and live-surface scanning with noise reduction."
 branding:
   icon: shield
   color: blue

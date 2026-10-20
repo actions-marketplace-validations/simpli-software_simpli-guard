@@ -1,3 +1,6 @@
+> Part of **Simpli Gatehouse**, the review and security gates from Simpli Software.
+> Its sibling, [simpli-software/simpli-review](https://github.com/simpli-software/simpli-review), reviews every pull request with whole-codebase context.
+
 # simpli-guard
 
 Security scanning for your own repositories and domains, run as a GitHub Action:
@@ -34,9 +37,8 @@ skipped with a warning; the rest still run.
    the surface checks).
 
 In `examples/security-scan.yml` the action is referenced as
-`<owner>/<repo>@<commit-sha> # v1.x`. That is a placeholder on purpose: replace it with the
-repository that hosts this action and the full commit hash of the release you want, keeping the
-tag in the comment. A tag or branch reference is flagged as unpinned by the workflow scan
+`simpli-software/simpli-guard@<commit-sha> # v1.x`. The hash is a placeholder on purpose: replace
+`<commit-sha>` with the full commit hash of the release you want, keeping the tag in the comment. A tag or branch reference is flagged as unpinned by the workflow scan
 (zizmor) this tool itself runs, and a commit hash cannot be moved after the fact.
 
 The workflow checks out with `fetch-depth: 0`: PR mode checks the base commit out
@@ -202,9 +204,16 @@ databases are fetched at run time from their publishers and are subject to their
 
 ## Support
 
-Best effort, no SLA. Issues are welcome (bug reports and feature requests, using the templates).
-Pull requests are not accepted for now; see [CONTRIBUTING.md](CONTRIBUTING.md). To report a
-vulnerability, see [SECURITY.md](SECURITY.md) and do not open a public issue.
+Best effort, no SLA. Issues are welcome (bug reports and feature requests, using the templates). To
+report a vulnerability, see [SECURITY.md](SECURITY.md) and do not open a public issue.
+
+Pull requests: for the first 90 days after the public launch this project takes issues only, and outside
+pull requests are not accepted yet. After that they are accepted with a Developer Certificate of Origin
+sign-off on every commit (`git commit -s`, see <https://developercertificate.org>) and no CLA. CI on fork
+pull requests runs on `pull_request` without secrets, workflows never use `pull_request_target`, a
+maintainer approves CI runs for first-time contributors, and every outside pull request gets a senior
+security review before merge, because the action runs inside your CI with your API keys. Details are in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

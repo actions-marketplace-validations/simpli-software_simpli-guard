@@ -1,5 +1,14 @@
-## Outside pull requests are not accepted yet
+## Outside pull requests
 
-This project takes issues only for now (see CONTRIBUTING.md). A pull request that does not come
-from the maintainers may be closed without review. Please open an issue describing the change
-instead.
+Launch policy: for the first 90 days after the public launch this project takes issues only. Outside
+pull requests are not accepted yet and may be closed without review; please open an issue instead (see
+CONTRIBUTING.md).
+
+After that window, outside pull requests are accepted with a Developer Certificate of Origin sign-off
+and no CLA. Every outside pull request gets a senior security review before merge, because the action
+runs inside users' CI with their API keys.
+
+## Sign-off
+
+- [ ] Every commit has a `Signed-off-by:` line (`git commit -s`), certifying
+  <https://developercertificate.org>.
