@@ -1,0 +1,60 @@
+# Copy to .github/workflows/security-scan.yml in each application repository.
+# Optional secret: ANTHROPIC_API_KEY (enables Claude triage; scanning works without it).
+# Optional config: .simpli-guard/config.json (see examples/config/example.json).
+#
+# Replace <owner>/<repo> with the repository that hosts this action and <commit-sha> with the
+# full 40-character commit hash of the release you want, keeping the tag in the comment.
+# The placeholder is deliberate: the Actions scan (zizmor) flags a tag or branch reference as
+# unpinned, and a commit hash cannot be moved after the fact.
+name: Security scan
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  schedule:
+    - cron: "17 3 * * *" # nightly, 03:17 UTC
+  workflow_dispatch:
+
+permissions: {} # each job asks for exactly what it needs
+
+jobs:
+  pr:
+    if: github.event_name == 'pull_request'
+    # Job-level, so a newer push cancels the older scan of the same PR only.
+    concurrency:
+      group: security-scan-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write # the one summary comment
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the base commit is checked out into a worktree and scanned too
+          persist-credentials: false
+      - uses: <owner>/<repo>@<commit-sha> # v1.x
+        with:
+          mode: pr
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    concurrency:
+      group: security-scan-nightly-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      issues: write # open/close one issue per critical/high finding
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history for the secrets scan
+          persist-credentials: false
+      - uses: <owner>/<repo>@<commit-sha> # v1.x
+        with:
+          mode: nightly
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}

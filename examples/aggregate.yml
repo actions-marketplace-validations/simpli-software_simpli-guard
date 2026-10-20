@@ -1,0 +1,37 @@
+# Optional: a daily cross-repository overview. Copy to .github/workflows/aggregate.yml in a
+# PRIVATE repository of your own, together with a repos.json (start from examples/repos.example.json).
+#
+# It downloads each repository's latest nightly `simpli-guard-report` artifact and commits
+# reports/README.md and reports/<repo>.md. Those files list your security findings, so only
+# ever run this in a private repository.
+#
+# Needs the secret GUARD_READ_TOKEN: a fine-grained personal access token with Actions: read
+# and Contents: read on the repositories listed in repos.json (see the README).
+#
+# Replace <owner>/<repo> with the repository that hosts this action and <commit-sha> with the
+# full 40-character commit hash of the release you want, keeping the tag in the comment.
+# The placeholder is deliberate: a tag or branch reference is flagged by the Actions scan.
+name: Aggregate security reports
+
+on:
+  schedule:
+    - cron: "7 5 * * *" # 05:07 UTC, after the 03:17 nightly scans
+  workflow_dispatch:
+
+permissions:
+  contents: write # commit the reports
+
+concurrency:
+  group: aggregate-reports
+  cancel-in-progress: false
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: <owner>/<repo>@<commit-sha> # v1.x
+        with:
+          mode: aggregate
+          guard-read-token: ${{ secrets.GUARD_READ_TOKEN }}

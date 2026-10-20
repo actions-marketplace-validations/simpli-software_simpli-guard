@@ -1,0 +1,25 @@
+{
+  "Results": [
+    {
+      "Target": "Dockerfile",
+      "Class": "config",
+      "Type": "dockerfile",
+      "Misconfigurations": [
+        {
+          "Type": "Dockerfile Security Check",
+          "ID": "DS002",
+          "AVDID": "AVD-DS-0002",
+          "Title": "Image user should not be 'root'",
+          "Description": "Running containers with 'root' user can lead to a container escape situation.",
+          "Message": "Specify at least 1 USER command in Dockerfile with non-root user as argument",
+          "Resolution": "Add 'USER <non root user name>' line to the Dockerfile",
+          "Severity": "HIGH",
+          "References": ["https://avd.aquasec.com/misconfig/ds002"],
+          "Status": "FAIL",
+          "CauseMetadata": {"StartLine": 1, "EndLine": 1, "Code": {"Lines": [{"Number": 1, "Content": "FROM python:3.12-slim"}]}}
+        },
+        {"ID": "DS026", "AVDID": "AVD-DS-0026", "Title": "No HEALTHCHECK defined", "Severity": "LOW", "Status": "PASS"}
+      ]
+    }
+  ]
+}

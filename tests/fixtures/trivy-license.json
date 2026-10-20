@@ -1,0 +1,14 @@
+{
+  "Results": [
+    {
+      "Target": "package-lock.json",
+      "Licenses": [
+        {"Severity": "HIGH", "Category": "restricted", "PkgName": "some-gpl-lib", "FilePath": "package-lock.json", "Name": "GPL-3.0-only", "Confidence": 1},
+        {"Severity": "CRITICAL", "Category": "forbidden", "PkgName": "agpl-thing", "FilePath": "package-lock.json", "Name": "AGPL-3.0", "Confidence": 1},
+        {"Severity": "MEDIUM", "Category": "reciprocal", "PkgName": "mpl-lib", "FilePath": "package-lock.json", "Name": "MPL-2.0", "Confidence": 1},
+        {"Severity": "LOW", "Category": "restricted", "PkgName": "lgpl-lib", "FilePath": "package-lock.json", "Name": "LGPL-2.1", "Confidence": 1},
+        {"Severity": "LOW", "Category": "notice", "PkgName": "mit-lib", "FilePath": "package-lock.json", "Name": "MIT", "Confidence": 1}
+      ]
+    }
+  ]
+}

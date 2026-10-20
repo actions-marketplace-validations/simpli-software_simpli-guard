@@ -1,0 +1,59 @@
+name: Security scan (simpli-guard)
+description: Code, dependency, secret, IaC, GitHub Actions workflow, container and live-surface scanning with noise reduction.
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  mode:
+    description: "pr | nightly | aggregate"
+    required: true
+  github-token:
+    description: Token for the PR comment (pr) and security issues (nightly).
+    default: ${{ github.token }}
+  anthropic-api-key:
+    description: Optional. Enables Claude triage of high/critical SAST and secret findings.
+    default: ""
+  guard-read-token:
+    description: aggregate mode only. Fine-grained PAT with Actions read + Contents read on the target repos.
+    default: ""
+  dry-run:
+    description: Print instead of commenting, opening issues or committing.
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: "3.12"
+    - name: Install simpli-guard
+      shell: bash
+      run: python -m pip install --quiet "${{ github.action_path }}"
+    - name: Scan
+      shell: bash
+      env:
+        # Inputs reach the script only through env, never interpolated into it.
+        GUARD_MODE: ${{ inputs.mode }}
+        GUARD_DRY_RUN: ${{ inputs.dry-run }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        GUARD_READ_TOKEN: ${{ inputs.guard-read-token }}
+      run: |
+        case "$GUARD_MODE" in
+          pr|nightly|aggregate) ;;
+          *) echo "::error::mode must be pr, nightly or aggregate"; exit 2 ;;
+        esac
+        args=("$GUARD_MODE")
+        if [ "$GUARD_DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+        simpli-guard "${args[@]}"
+    - name: Upload report
+      if: ${{ always() && inputs.mode == 'nightly' }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: simpli-guard-report
+        path: |
+          ${{ github.workspace }}/simpli-guard-report.json
+          ${{ github.workspace }}/simpli-guard-report.md
+        if-no-files-found: warn
+        retention-days: 30

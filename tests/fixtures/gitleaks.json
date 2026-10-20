@@ -1,0 +1,29 @@
+[
+  {
+    "RuleID": "stripe-access-token",
+    "Description": "Stripe Access Token",
+    "StartLine": 3,
+    "EndLine": 3,
+    "Match": "STRIPE_KEY = \"sk_live_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"",
+    "Secret": "sk_live_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "File": "config/settings.py",
+    "Line": "STRIPE_KEY = \"sk_live_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"",
+    "Commit": "0123456789abcdef0123456789abcdef01234567",
+    "Entropy": 4.5,
+    "Author": "Someone",
+    "Email": "someone@example.com",
+    "Date": "2026-01-01T00:00:00Z",
+    "Message": "add config",
+    "Tags": [],
+    "Fingerprint": "0123456789abcdef:config/settings.py:stripe-access-token:3"
+  },
+  {
+    "RuleID": "generic-api-key",
+    "Description": "Generic API Key",
+    "StartLine": 8,
+    "Match": "api_key = 'fixtureapikeyvalue987654321'",
+    "Secret": "fixtureapikeyvalue987654321",
+    "File": "tests/fixtures/sample.env",
+    "Commit": "fedcba9876543210fedcba9876543210fedcba98"
+  }
+]
