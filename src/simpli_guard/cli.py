@@ -1,4 +1,4 @@
-"""Console entry point: `simpli-guard pr | nightly | aggregate | local`."""
+"""Console entry point: `simpli-guard pr | nightly | aggregate | local | init`."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from simpli_guard import aggregate as agg
-from simpli_guard import noise
+from simpli_guard import init_command, noise
 from simpli_guard.config import GuardConfig, load_config
 from simpli_guard.github import GitHub, GitHubError
 from simpli_guard.issues import reconcile
@@ -235,8 +235,15 @@ def main(argv: list[str] | None = None) -> int:
             sp.add_argument("--out", default="", help="directory for the report files (default: root)")
         if name == "aggregate":
             sp.add_argument("--repos", default="repos.json")
+    init_command.add_parser(sub)
     args = p.parse_args(argv)
-    handlers = {"pr": cmd_pr, "nightly": cmd_nightly, "aggregate": cmd_aggregate, "local": cmd_local}
+    handlers = {
+        "pr": cmd_pr,
+        "nightly": cmd_nightly,
+        "aggregate": cmd_aggregate,
+        "local": cmd_local,
+        "init": init_command.cmd_init,
+    }
     return handlers[args.cmd](args)
 
 
