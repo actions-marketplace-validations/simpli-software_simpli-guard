@@ -8,8 +8,8 @@
 # Needs the secret GUARD_READ_TOKEN: a fine-grained personal access token with Actions: read
 # and Contents: read on the repositories listed in repos.json (see the README).
 #
-# Replace <owner>/<repo> with the repository that hosts this action and <commit-sha> with the
-# full 40-character commit hash of the release you want, keeping the tag in the comment.
+# Replace <commit-sha> with the full 40-character commit hash of the release you want, keeping the
+# tag in the comment.
 # The placeholder is deliberate: a tag or branch reference is flagged by the Actions scan.
 name: Aggregate security reports
 
@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: <owner>/<repo>@<commit-sha> # v1.x
+      - uses: simpli-software/simpli-guard@<commit-sha> # v1.x
         with:
           mode: aggregate
           guard-read-token: ${{ secrets.GUARD_READ_TOKEN }}

@@ -15,6 +15,11 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.8", "mypy>=1.14"]
 
+[project.urls]
+Homepage = "https://github.com/simpli-software/simpli-guard"
+Issues = "https://github.com/simpli-software/simpli-guard/issues"
+Source = "https://github.com/simpli-software/simpli-guard"
+
 [project.scripts]
 simpli-guard = "simpli_guard.cli:main"
 
