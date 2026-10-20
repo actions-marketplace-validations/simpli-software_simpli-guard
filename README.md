@@ -105,9 +105,13 @@ the secrets scan.
     {"path": "scripts/**", "reason": "local dev scripts, never deployed"}
   ],
   "triage": {"enabled": true, "model": "claude-sonnet-5-5", "effort": "medium", "maxFindings": 60},
-  "testPaths": ["qa/**"]
+  "testPaths": ["qa/**"],
+  "overrideLabel": "security-override"
 }
 ```
+
+`overrideLabel` (default `security-override`) is the pull request label a maintainer sets to apply
+suppressions the PR itself adds; see [Where settings come from](#where-settings-come-from).
 
 `name` is the heading on comments, issues and reports (no product name is hard-coded).
 
@@ -121,6 +125,8 @@ or above `failOn` (default `high`). One PR comment (updated in place) lists new
 findings by severity with file:line links, the suppressed ones with their reasons
 (collapsed), and a count of pre-existing findings; the same goes to the job summary.
 With no new findings the comment shrinks to one line (or is never posted).
+It also lists the [suppressions the PR adds](#where-settings-come-from) and any change the PR makes to the
+scan settings files.
 
 **`nightly`** (schedule / manual): everything above plus full-history secrets,
 `docker build` + `trivy image` for each Dockerfile (a failed build is skipped),
@@ -139,7 +145,47 @@ downloads each repo's latest successful `simpli-guard-report` artifact and commi
 repository. The reports list your security findings, so never run this mode in a public repository.
 
 **`local --base <ref>`**: PR mode on your machine, printed to the terminal, no GitHub
-calls. `simpli-guard local --base origin/main --no-triage`.
+calls. `simpli-guard local --base origin/main --no-triage`. It previews with the settings in your
+working tree (CI reads them from the base branch) and has no labels, so a PR-added inline ignore on a
+finding at or above `failOn` is reported as not applied.
+
+## Where settings come from
+
+A pull request must not be able to approve its own findings. In `pr` mode the settings that decide
+what fails are therefore read from the **base commit** (the branch the PR targets), never from the PR:
+
+| Setting | PR mode reads it from |
+|---|---|
+| `.simpli-guard/config.json` (`failOn`, `ignore`, `categories`, `testPaths`, `triage`, `overrideLabel`) | base commit |
+| `.gitleaksignore`, `.gitleaks.toml` | base commit (gitleaks runs in the base checkout over the PR's commits) |
+| Inline `# simpli-guard: ignore <rule> <reason>` comments | the PR head; only ignores that already exist on the base apply freely (below) |
+| Inline `gitleaks:allow` comments | not honoured in PR scans unless the override label is set |
+| Override label | the PR's labels (from the event payload); the label name comes from the base config |
+
+If the base commit cannot be checked out (for example a shallow clone), the job **fails** with a clear
+message instead of scanning with the PR's own settings. Use `fetch-depth: 0`. A repository with no config
+on the base uses the defaults, so the PR that first adds `.simpli-guard/config.json` takes effect after
+it merges. `nightly` and `aggregate` run on the default branch and read its files as before.
+
+**Suppressions added in the PR.** An inline ignore counts as added by the PR when the PR head has more
+copies of that exact comment (same file, same rule, same reason) than the base has, so copying an
+existing comment onto a new line does not launder it. Such an ignore:
+
+- does **not** suppress a finding at or above `failOn`; the finding still counts and fails the job, and
+  the comment lists it under *Suppressions added in this PR (not applied)*;
+- applies when a maintainer sets the override label (`security-override`, or `overrideLabel` in the base
+  config). Only people with triage access can label a PR. The workflow must run on `labeled` and
+  `unlabeled` (the [example](examples/security-scan.yml) does) so the scan re-runs when the label changes;
+  a plain "re-run" reuses the old labels;
+- applies normally below `failOn`, and is still listed (*applied*) so a reviewer sees it.
+
+**Changes to the settings files.** If the PR changes `.simpli-guard/config.json`, `.gitleaksignore` or
+`.gitleaks.toml`, the comment lists them and says they apply after merge. Add them to CODEOWNERS so a
+maintainer reviews them.
+
+**Not covered.** The other scanners' own ignore mechanisms (zizmor's `# zizmor: ignore` comments and
+`zizmor.yml`, `# nosem`, `.trivyignore`, osv-scanner's config) are still read from the PR head. Protect
+those paths with CODEOWNERS as well.
 
 ## The GUARD_READ_TOKEN (aggregate mode)
 
@@ -160,11 +206,14 @@ In order of preference:
 1. Fix it.
 2. Inline, for a code finding: `# simpli-guard: ignore <rule_id> <reason>` (or `//`)
    on the flagged line or the line above. The rule id can be the full id or its tail
-   (e.g. `eval-detected`). A comment without a reason is ignored.
+   (e.g. `eval-detected`). A comment without a reason is ignored. In a PR, an ignore the PR itself
+   adds does not silence a finding at or above `failOn` (see
+   [Where settings come from](#where-settings-come-from)).
 3. In config: `ignore` by `id` (fingerprint, shown in reports and issues), `rule` or
    `path` glob, always with a `reason`, optionally `expires` (ISO date) - expired
    entries stop applying and the finding comes back.
-4. For secrets, gitleaks' own `.gitleaksignore` / `.gitleaks.toml` in the repo are honoured.
+4. For secrets, gitleaks' own `.gitleaksignore` / `.gitleaks.toml` in the repo are honoured (in PR
+   scans, the base branch's copies).
 5. For Actions workflow findings, zizmor's own `# zizmor: ignore[template-injection]` comment on
    the flagged line and a `zizmor.yml` / `.github/zizmor.yml` in the repo are honoured; config
    `ignore` entries work too (`"rule": "template-injection"`; the full id is `zizmor.template-injection`).

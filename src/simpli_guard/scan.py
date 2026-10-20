@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from simpli_guard.config import GuardConfig
+from simpli_guard.config import CONFIG_PATH, GuardConfig
 from simpli_guard.models import Category, Finding
 from simpli_guard.scanners import gitleaks, opengrep, osv, surface, trivy, zizmor
 from simpli_guard.scanners.base import ScanResult
@@ -25,6 +25,10 @@ class Plan:
     deps: bool = True
     secrets: bool = True
     secrets_range: str | None = None  # None = full history
+    # Where gitleaks runs. PR mode points this at the base checkout so the PR's own
+    # .gitleaks.toml / .gitleaksignore are never read. None = the scanned root.
+    secrets_root: Path | None = None
+    ignore_gitleaks_allow: bool = False
     iac: bool = True
     actions: bool = True
     images: bool = False
@@ -74,7 +78,12 @@ def run_plan(root: Path, plan: Plan, config: GuardConfig) -> list[ScanResult]:
         steps: list[tuple[bool, Step]] = [
             (plan.sast, lambda: opengrep.scan(root, work)),
             (plan.deps, lambda: osv.scan(root, work)),
-            (plan.secrets, lambda: gitleaks.scan(root, work, plan.secrets_range)),
+            (
+                plan.secrets,
+                lambda: gitleaks.scan(
+                    plan.secrets_root or root, work, plan.secrets_range, plan.ignore_gitleaks_allow
+                ),
+            ),
             (plan.iac, lambda: trivy.scan_config(root, work)),
             (plan.actions, lambda: zizmor.scan(root, work)),
             (plan.images, lambda: trivy.scan_images(root, work)),
@@ -114,6 +123,16 @@ def worktree(root: Path, sha: str) -> Iterator[Path]:
         except subprocess.CalledProcessError:
             log.warning("could not remove the base worktree")
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+# Files that change what the scan reports. In PR mode they are read from the base commit.
+SETTINGS_FILES = (CONFIG_PATH, ".gitleaksignore", ".gitleaks.toml")
+
+
+def changed_settings(root: Path, base_sha: str, head_sha: str) -> list[str]:
+    """Settings files the PR changes (merge-base diff, so base-branch movement is not counted)."""
+    out = git(root, "diff", "--name-only", f"{base_sha}...{head_sha}", "--", *SETTINGS_FILES)
+    return sorted(line.strip() for line in out.splitlines() if line.strip())
 
 
 @dataclass

@@ -6,7 +6,8 @@
 3. config ignores - by fingerprint id, rule id or path glob, each with a
    reason; expired entries stop applying;
 4. inline ignores - `# simpli-guard: ignore <rule_id> <reason>` (or `//`) on
-   the flagged line or the line above, for SAST findings.
+   the flagged line or the line above, for SAST findings. In PR mode an ignore the PR
+   itself adds does not suppress a finding at or above failOn (see PrScope).
 
 Suppressed findings are kept (with the reason) for the report; they are just
 not counted, posted or failed on.
@@ -16,6 +17,8 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import Counter
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
@@ -94,9 +97,54 @@ def apply_ignores(findings: list[Finding], config: GuardConfig, today: date | No
 
 INLINE = re.compile(r"(?:#|//|/\*|--)\s*simpli-guard:\s*ignore\s+(\S+)(?:\s+(.*?))?\s*(?:\*/)?\s*$")
 
+# (rule selector, reason) as written in an ignore comment; the file is the dict key it lives under.
+InlineKey = tuple[str, str]
 
-def apply_inline_ignores(findings: list[Finding], root: Path) -> None:
+
+def inline_ignore_counts(lines: list[str]) -> Counter[InlineKey]:
+    """Every well-formed ignore comment in a file, counted by (rule, reason)."""
+    counts: Counter[InlineKey] = Counter()
+    for text in lines:
+        m = INLINE.search(text)
+        if m and (m.group(2) or "").strip():
+            counts[(m.group(1), (m.group(2) or "").strip())] += 1
+    return counts
+
+
+@dataclass
+class AddedSuppression:
+    """An inline ignore that exists on the PR head but not on the base commit."""
+
+    finding: Finding
+    selector: str
+    reason: str
+    applied: bool
+    via_override: bool = False
+
+
+@dataclass
+class PrScope:
+    """What `apply_inline_ignores` needs to tell the PR's own ignores from the base's.
+
+    `base_root` is the base commit's checkout. An ignore counts as added by the PR when the
+    PR head has more copies of the same (file, rule, reason) comment than the base has. When it
+    has more, every finding relying on that (file, rule, reason) is treated as PR-added, so a
+    copied comment cannot launder a new finding."""
+
+    base_root: Path
+    fail_on: Severity
+    override: bool = False
+    override_label: str = ""
+
+
+def apply_inline_ignores(
+    findings: list[Finding], root: Path, pr: PrScope | None = None
+) -> list[AddedSuppression]:
+    """Apply inline ignores; with `pr`, return the ones the PR added and say whether each applied."""
     cache: dict[str, list[str]] = {}
+    base_counts: dict[str, Counter[InlineKey]] = {}
+    head_counts: dict[str, Counter[InlineKey]] = {}
+    added: list[AddedSuppression] = []
     for f in findings:
         if not f.kept or f.category != Category.SAST or not f.line:
             continue
@@ -111,15 +159,59 @@ def apply_inline_ignores(findings: list[Finding], root: Path) -> None:
             if not reason:
                 log.warning("inline ignore at %s:%d has no reason; not applied", f.path, ln)
                 continue
-            f.suppress(f"inline ignore: {reason}", TriageBy.RULE)
+            key = (m.group(1), reason)
+            if pr is not None and _added_by_pr(f.path, key, lines, pr, base_counts, head_counts):
+                added.append(_decide_added(f, key, pr))
+            else:
+                f.suppress(f"inline ignore: {reason}", TriageBy.RULE)
             break
+    return added
+
+
+def _added_by_pr(
+    path: str,
+    key: InlineKey,
+    head_lines: list[str],
+    pr: PrScope,
+    base_counts: dict[str, Counter[InlineKey]],
+    head_counts: dict[str, Counter[InlineKey]],
+) -> bool:
+    if path not in base_counts:
+        base_counts[path] = inline_ignore_counts(read_lines(pr.base_root, path))
+        head_counts[path] = inline_ignore_counts(head_lines)
+    return head_counts[path][key] > base_counts[path][key]
+
+
+def _decide_added(f: Finding, key: InlineKey, pr: PrScope) -> AddedSuppression:
+    selector, reason = key
+    if pr.override:
+        f.suppress(
+            f"inline ignore added in this PR, applied by the {pr.override_label} label: {reason}",
+            TriageBy.RULE,
+        )
+        return AddedSuppression(f, selector, reason, applied=True, via_override=True)
+    if f.severity.at_least(pr.fail_on):
+        f.notes.append("an ignore comment added in this PR was not applied")
+        return AddedSuppression(f, selector, reason, applied=False)
+    f.suppress(f"inline ignore added in this PR: {reason}", TriageBy.RULE)
+    return AddedSuppression(f, selector, reason, applied=True)
+
+
+def reduce_with_suppressions(
+    findings: list[Finding],
+    config: GuardConfig,
+    root: Path,
+    kev: set[str],
+    today: date | None = None,
+    pr: PrScope | None = None,
+) -> tuple[list[Finding], list[AddedSuppression]]:
+    apply_severity_rules(findings, kev, config.test_paths)
+    out = dedupe(findings)
+    apply_ignores(out, config, today)
+    return out, apply_inline_ignores(out, root, pr)
 
 
 def reduce(
     findings: list[Finding], config: GuardConfig, root: Path, kev: set[str], today: date | None = None
 ) -> list[Finding]:
-    apply_severity_rules(findings, kev, config.test_paths)
-    out = dedupe(findings)
-    apply_ignores(out, config, today)
-    apply_inline_ignores(out, root)
-    return out
+    return reduce_with_suppressions(findings, config, root, kev, today)[0]

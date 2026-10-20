@@ -75,7 +75,7 @@ name: Security scan
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   schedule:
     - cron: "17 3 * * *" # nightly, 03:17 UTC
   workflow_dispatch:

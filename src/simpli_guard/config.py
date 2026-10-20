@@ -3,6 +3,7 @@
 {
   "name": "Security scan",                  // heading on comments/issues/reports
   "failOn": "high",                          // PR mode: fail on NEW findings at/above this
+  "overrideLabel": "security-override",      // PR label that applies suppressions the PR itself adds
   "categories": {"sast": true, "dependency": true, "secret": true, "iac": true,
                  "container": true, "license": true, "surface": true, "actions": true},
   "surface": {"urls": ["https://app.example.com"]},
@@ -30,6 +31,7 @@ from simpli_guard.models import Category, Severity
 log = logging.getLogger(__name__)
 
 CONFIG_PATH = ".simpli-guard/config.json"
+DEFAULT_OVERRIDE_LABEL = "security-override"
 
 
 class _Model(BaseModel):
@@ -79,12 +81,21 @@ class GuardConfig(_Model):
     ignore: list[IgnoreRule] = Field(default_factory=list)
     triage: TriageConfig = Field(default_factory=TriageConfig)
     test_paths: list[str] = Field(default_factory=list, alias="testPaths")
+    override_label: str = Field(default=DEFAULT_OVERRIDE_LABEL, alias="overrideLabel")
+
+    @field_validator("override_label")
+    @classmethod
+    def _label_required(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("overrideLabel must not be empty")
+        return v.strip()
 
     def enabled(self, category: Category) -> bool:
         return self.categories.get(category, True)
 
 
-def load_config(repo_root: Path) -> GuardConfig:
+def load_config(repo_root: Path, source: str = "") -> GuardConfig:
+    """`source` names where the file came from (e.g. "the base commit") for the error message."""
     path = repo_root / CONFIG_PATH
     if not path.is_file():
         return GuardConfig()
@@ -93,7 +104,8 @@ def load_config(repo_root: Path) -> GuardConfig:
         return GuardConfig.model_validate(data)
     except (OSError, ValueError, ValidationError) as e:
         # A broken config must not silently disable scanning: fail loudly.
-        raise SystemExit(f"invalid {CONFIG_PATH}: {e}") from None
+        where = f" (read from {source})" if source else ""
+        raise SystemExit(f"invalid {CONFIG_PATH}{where}: {e}") from None
 
 
 # ---------- path classification ----------
