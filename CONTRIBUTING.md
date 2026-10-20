@@ -5,9 +5,8 @@
 Bug reports and feature requests are welcome as issues; please use the templates. Security problems
 go through [SECURITY.md](SECURITY.md), not a public issue.
 
-**Launch policy.** For the first 90 days after the public launch this project takes issues only.
-Outside pull requests are not accepted yet and may be closed without review. This file will say when
-that window ends.
+**Launch policy.** This project went public on 2026-10-20. Until 2027-01-18 (90 days) it takes
+issues only: outside pull requests are not accepted yet and may be closed without review.
 
 **After that,** pull requests are accepted under the Developer Certificate of Origin (DCO). Sign off
 every commit with `git commit -s`, which adds a `Signed-off-by: Your Name <your@email>` line. By

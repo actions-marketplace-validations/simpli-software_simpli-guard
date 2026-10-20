@@ -207,7 +207,7 @@ databases are fetched at run time from their publishers and are subject to their
 Best effort, no SLA. Issues are welcome (bug reports and feature requests, using the templates). To
 report a vulnerability, see [SECURITY.md](SECURITY.md) and do not open a public issue.
 
-Pull requests: for the first 90 days after the public launch this project takes issues only, and outside
+Pull requests: until 2027-01-18 (90 days after the 2026-10-20 public launch) this project takes issues only, and outside
 pull requests are not accepted yet. After that they are accepted with a Developer Certificate of Origin
 sign-off on every commit (`git commit -s`, see <https://developercertificate.org>) and no CLA. CI on fork
 pull requests runs on `pull_request` without secrets, workflows never use `pull_request_target`, a

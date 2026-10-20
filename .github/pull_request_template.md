@@ -1,6 +1,6 @@
 ## Outside pull requests
 
-Launch policy: for the first 90 days after the public launch this project takes issues only. Outside
+Launch policy: until 2027-01-18 (90 days after the 2026-10-20 public launch) this project takes issues only. Outside
 pull requests are not accepted yet and may be closed without review; please open an issue instead (see
 CONTRIBUTING.md).
 
