@@ -27,7 +27,53 @@ Scanner binaries are downloaded from their GitHub releases at the pinned version
 checked against a pinned SHA-256 before use. If one can't be fetched, that scanner is
 skipped with a warning; the rest still run.
 
-## Add it to a repository
+## Quick setup
+
+From the root of the repository you want to scan:
+
+```bash
+pipx install git+https://github.com/simpli-software/simpli-guard
+simpli-guard init
+```
+
+Prefer a form? The [Simpli Gatehouse config builder](https://simpli-software.github.io/simpli-gatehouse/) builds the same files in your browser, pinned to the latest release.
+
+`init` asks a few questions (press Enter to accept each default) and then writes
+`.github/workflows/security-scan.yml` and `.simpli-guard/config.json`. The config holds only the settings
+you changed from the defaults, so a default setup writes `{}`. It looks up the latest release of this
+project through the public GitHub API and pins the action to that release's commit hash with the tag in a
+comment. If you are offline, or the lookup fails, it writes the `<commit-sha> # v1.x` placeholder and prints
+how to fill it in. A token is sent to the API only if `GITHUB_TOKEN` or `GH_TOKEN` is set.
+
+It asks for:
+
+- the heading used on comments, issues and reports (default `Security scan`);
+- the severity that fails a PR (`critical`, `high` or `medium`; default `high`);
+- categories to turn off, including `actions` (zizmor);
+- live-surface URLs to check nightly (optional, `https` only);
+- whether to use Claude triage (default on; needs the `ANTHROPIC_API_KEY` secret) and which model;
+- extra test paths, prefilled from test folders it finds that are not already recognised as tests;
+- the nightly run time in UTC (default `03:17`);
+- whether to also write the aggregate workflow (default no; it belongs in a private repository and needs
+  a `repos.json` and the `GUARD_READ_TOKEN` secret, see [below](#the-guard_read_token-aggregate-mode)).
+
+If triage is on and the GitHub CLI (`gh`) is installed, it checks that the `ANTHROPIC_API_KEY` secret exists
+for the repository or its organization, by name only (it never reads or sets a value), and prints the
+`gh secret set` command if it is missing. It ends with a checklist of next steps, including how to ignore a
+finding.
+
+| Flag | Effect |
+|---|---|
+| `--yes`, `--non-interactive` | Take every default, ask nothing. |
+| `--force` | Overwrite files that already exist. Without it nothing is overwritten: a short diff is shown and the file is skipped. |
+| `--dry-run` | Show what would be written; write nothing. |
+| `--ref <owner/repo@sha>` | Pin this commit instead of looking up the latest release. Add `#<tag>` to set the comment. |
+| `--root <dir>` | The repository root (default: the current directory). |
+
+The files are written with LF line endings. Review them, commit them to the default branch, and open a
+pull request to see the first scan.
+
+## Add it to a repository (by hand)
 
 1. Copy [`examples/security-scan.yml`](examples/security-scan.yml) to
    `.github/workflows/security-scan.yml`.
