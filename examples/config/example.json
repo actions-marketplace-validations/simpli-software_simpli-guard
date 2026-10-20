@@ -1,0 +1,16 @@
+{
+  "name": "Security scan",
+  "failOn": "high",
+  "surface": {
+    "urls": [
+      "https://app.example.com",
+      "https://api.example.com"
+    ]
+  },
+  "triage": {
+    "enabled": true,
+    "model": "claude-sonnet-5-5",
+    "maxFindings": 60
+  },
+  "ignore": []
+}

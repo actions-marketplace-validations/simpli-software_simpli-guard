@@ -1,0 +1,46 @@
+{
+  "version": "1.30.1",
+  "results": [
+    {
+      "check_id": "home.runner.cache.opengrep-rules.sgrules.python.lang.security.audit.formatted-sql-query.formatted-sql-query",
+      "path": "app/db.py",
+      "start": {"line": 4, "col": 5, "offset": 40},
+      "end": {"line": 4, "col": 60, "offset": 95},
+      "extra": {
+        "message": "Detected possible formatted SQL query. Use parameterized queries instead.",
+        "severity": "ERROR",
+        "lines": "    cur.execute(\"SELECT * FROM users WHERE id = %s\" % user_id)",
+        "metadata": {
+          "category": "security",
+          "cwe": ["CWE-89: Improper Neutralization of Special Elements used in an SQL Command"],
+          "references": ["https://owasp.org/Top10/A03_2021-Injection/"]
+        }
+      }
+    },
+    {
+      "check_id": "sgrules.python.lang.best-practice.open-never-closed.open-never-closed",
+      "path": "app/util.py",
+      "start": {"line": 2, "col": 1},
+      "end": {"line": 2, "col": 20},
+      "extra": {
+        "message": "file object opened without corresponding close",
+        "severity": "ERROR",
+        "lines": "f = open('x')",
+        "metadata": {"category": "best-practice"}
+      }
+    },
+    {
+      "check_id": "sgrules.python.lang.security.audit.eval-detected.eval-detected",
+      "path": "tests/test_eval.py",
+      "start": {"line": 1, "col": 1},
+      "end": {"line": 1, "col": 12},
+      "extra": {
+        "message": "Detected the use of eval(). eval() can be dangerous if used to evaluate dynamic content.",
+        "severity": "WARNING",
+        "lines": "eval(code)",
+        "metadata": {"category": "security", "references": "https://docs.python.org/3/library/functions.html#eval"}
+      }
+    }
+  ],
+  "errors": []
+}
