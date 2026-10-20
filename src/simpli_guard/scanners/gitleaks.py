@@ -2,9 +2,9 @@
 
 PR mode scans only the commits in the PR (`base..head`); nightly scans the
 full history. The repository's own `.gitleaks.toml` and `.gitleaksignore` are
-honoured. The raw report is written to a private temp dir, read once, and
-deleted; each secret is reduced to a masked prefix (`sk_l…`) at parse time
-and the raw value is dropped immediately.
+honoured (in PR mode, the copies on the base commit, never the PR's). The raw
+report is written to a private temp dir, read once, and deleted; each secret is reduced
+to a masked prefix (`sk_l…`) at parse time and the raw value is dropped immediately.
 """
 
 from __future__ import annotations
@@ -48,8 +48,13 @@ SPEC = ToolSpec(
 _CRITICAL_RULES = ("private-key", "aws-access-token", "stripe", "github-pat", "github-fine-grained", "gcp")
 
 
-def scan(root: Path, workdir: Path, log_range: str | None) -> ScanResult:
-    """`log_range` like "base..head" for PR mode; None = full history."""
+def scan(root: Path, workdir: Path, log_range: str | None, ignore_allow: bool = False) -> ScanResult:
+    """`log_range` like "base..head" for PR mode; None = full history.
+
+    gitleaks reads `.gitleaks.toml` and `.gitleaksignore` from `root`, so PR mode passes the
+    base commit's checkout here (the range is resolved in the shared object store), which keeps
+    the PR's own copies of those files out of the scan. `ignore_allow` turns off inline
+    `gitleaks:allow` comments."""
     exe = install(SPEC)
     if exe is None:
         return ScanResult(TOOL, "skipped", message="gitleaks unavailable")
@@ -67,6 +72,8 @@ def scan(root: Path, workdir: Path, log_range: str | None) -> ScanResult:
     ]
     if log_range:
         args += ["--log-opts", log_range]
+    if ignore_allow:
+        args.append("--ignore-gitleaks-allow")
     if (root / ".gitleaks.toml").is_file():
         args += ["--config", str(root / ".gitleaks.toml")]
     if (root / ".gitleaksignore").is_file():

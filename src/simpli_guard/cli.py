@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
 import os
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,7 +28,7 @@ from simpli_guard.render import (
     report_json,
     report_md,
 )
-from simpli_guard.scan import Diff, Plan, git, run_plan, split_new, worktree
+from simpli_guard.scan import Diff, Plan, changed_settings, git, run_plan, split_new, worktree
 from simpli_guard.scanners.base import ScanResult
 from simpli_guard.scanners.kev import load_kev
 from simpli_guard.triage import TriageSettings, TriageStats, triage
@@ -84,16 +86,36 @@ class PrOutcome:
     failed: bool
     body: str
     tool_notes: list[str]
+    added: list[noise.AddedSuppression]
+    settings_changed: list[str]
 
 
 def analyse_pr(
-    root: Path, base_sha: str, head_sha: str, config: GuardConfig, client: Any | None, links: LinkContext
+    root: Path,
+    base_root: Path,
+    base_sha: str,
+    head_sha: str,
+    config: GuardConfig,
+    client: Any | None,
+    links: LinkContext,
+    labels: frozenset[str] = frozenset(),
+    settings_from_base: bool = True,
 ) -> PrOutcome:
-    head_results = run_plan(root, Plan.pr(config, f"{base_sha}..{head_sha}"), config)
-    with worktree(root, base_sha) as base_root:
-        base_results = run_plan(base_root, Plan.base(config), config)
+    """Scan the PR head and the base checkout and report what the PR introduces.
+
+    `config` must already come from the base (pr mode). With `settings_from_base` the head's
+    secret scan runs in the base checkout too, so the PR's own `.gitleaks.toml` and
+    `.gitleaksignore` are not read; `labels` decide whether suppressions the PR adds apply."""
+    override = config.override_label.casefold() in {x.casefold() for x in labels}
+    plan = Plan.pr(config, f"{base_sha}..{head_sha}")
+    if settings_from_base:
+        plan.secrets_root = base_root
+        plan.ignore_gitleaks_allow = not override  # an inline gitleaks:allow is a PR-added ignore
+    head_results = run_plan(root, plan, config)
+    base_results = run_plan(base_root, Plan.base(config), config)
     raw = _all(head_results)
-    findings = noise.reduce(raw, config, root, _kev_if_needed(raw))
+    scope = noise.PrScope(base_root, config.fail_on, override, config.override_label)
+    findings, added = noise.reduce_with_suppressions(raw, config, root, _kev_if_needed(raw), pr=scope)
     head_tools = {r.tool for r in head_results if r.status == "ran"}
     diff = split_new(findings, base_results, head_tools)
     _run_triage(client, config, diff.new, root)
@@ -105,13 +127,51 @@ def analyse_pr(
             f"Could not scan the base with {', '.join(sorted(diff.undiffable_tools))}; "
             "their findings are listed as pre-existing."
         )
-    body = pr_comment(config.name, diff.new, diff.existing, links, config.fail_on.value, failed, notes)
-    return PrOutcome(diff, failed, body, notes)
+    settings_changed: list[str] = []
+    try:
+        settings_changed = changed_settings(root, base_sha, head_sha)
+    except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired):
+        notes.append("Could not tell whether this PR changes the scan settings files.")
+    if (
+        settings_from_base
+        and not override
+        and any(f.kept and f.category == Category.SECRET for f in diff.new)
+    ):
+        notes.append(
+            f"gitleaks:allow comments are not honoured in PR scans unless a maintainer sets "
+            f"the {config.override_label} label."
+        )
+    body = pr_comment(
+        config.name,
+        diff.new,
+        diff.existing,
+        links,
+        config.fail_on.value,
+        failed,
+        notes,
+        added,
+        settings_changed,
+        config.override_label,
+    )
+    return PrOutcome(diff, failed, body, notes, added, settings_changed)
+
+
+def _open_base(stack: contextlib.ExitStack, root: Path, base_sha: str) -> Path | None:
+    """Check the base commit out, or say why not. None = the caller must fail the job."""
+    try:
+        return stack.enter_context(worktree(root, base_sha))
+    except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired):
+        log.error(
+            "could not read the base commit %s (is the checkout shallow? use fetch-depth: 0). "
+            "PR mode takes its settings from the base commit and never from the PR, so it fails here "
+            "instead of scanning with the PR's own settings.",
+            base_sha[:12],
+        )
+        return None
 
 
 def cmd_pr(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    config = load_config(root)
     event = json.loads(Path(_env("GITHUB_EVENT_PATH")).read_text(encoding="utf-8"))
     pr = event.get("pull_request")
     if not pr:
@@ -119,9 +179,16 @@ def cmd_pr(args: argparse.Namespace) -> int:
         return 2
     number = int(pr["number"])
     base_sha, head_sha = pr["base"]["sha"], pr["head"]["sha"]
+    labels = frozenset(str(x.get("name", "")) for x in pr.get("labels") or [] if isinstance(x, dict))
     repo = _env("GITHUB_REPOSITORY")
     links = LinkContext(_env("GITHUB_SERVER_URL", "https://github.com"), repo, head_sha)
-    out = analyse_pr(root, base_sha, head_sha, config, _triage_client(config, args.no_triage), links)
+    with contextlib.ExitStack() as stack:
+        base_root = _open_base(stack, root, base_sha)
+        if base_root is None:
+            return 2
+        config = load_config(base_root, "the base commit")  # never the PR head
+        client = _triage_client(config, args.no_triage)
+        out = analyse_pr(root, base_root, base_sha, head_sha, config, client, links, labels)
     _summary(out.body)
     kept_new = [f for f in out.diff.new if f.kept]
     if args.dry_run:
@@ -130,7 +197,10 @@ def cmd_pr(args: argparse.Namespace) -> int:
         try:
             gh = GitHub(_env("GITHUB_TOKEN"), repo)
             existing = gh.find_comment(number, PR_MARKER)
-            if kept_new or [f for f in out.diff.new if not f.kept]:
+            has_news = (
+                kept_new or [f for f in out.diff.new if not f.kept] or out.added or out.settings_changed
+            )
+            if has_news:
                 if existing:
                     gh.update_comment(existing, out.body)
                 else:
@@ -145,10 +215,17 @@ def cmd_pr(args: argparse.Namespace) -> int:
 
 def cmd_local(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    config = load_config(root)
+    config = load_config(root)  # a local run previews with your working tree; CI reads the base
     base_sha = git(root, "rev-parse", "--verify", args.base + "^{commit}")
     head_sha = git(root, "rev-parse", "HEAD")
-    out = analyse_pr(root, base_sha, head_sha, config, _triage_client(config, args.no_triage), LinkContext())
+    with contextlib.ExitStack() as stack:
+        base_root = _open_base(stack, root, base_sha)
+        if base_root is None:
+            return 2
+        client = _triage_client(config, args.no_triage)
+        out = analyse_pr(
+            root, base_root, base_sha, head_sha, config, client, LinkContext(), settings_from_base=False
+        )
     print(out.body)
     return 1 if out.failed else 0
 

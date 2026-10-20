@@ -40,6 +40,32 @@ its findings are listed as pre-existing (with a note) rather than failing the PR
 findings it may not have introduced. The job exits 1 only when a new, unsuppressed finding
 is at or above `failOn`.
 
+### Where settings come from
+
+In PR mode the base commit is the trust anchor. `analyse_pr` is given the base checkout first and
+everything that can suppress or relax a result is taken from it:
+
+- `.simpli-guard/config.json` is loaded from the base checkout (`load_config(base_root)`). A missing file
+  means defaults; an unreadable or invalid one stops the job. If the worktree cannot be created the job
+  exits 2 before any scan: there is no fallback to the PR head.
+- gitleaks runs with the base checkout as its working directory and the PR's commit range
+  (`base..head`) as `--log-opts`. The range is resolved in the shared object store, while gitleaks
+  discovers `.gitleaks.toml` and `.gitleaksignore` next to its working directory, so it only ever sees the
+  base copies. `--ignore-gitleaks-allow` is passed unless the override label is set.
+- Inline simpli-guard ignores are read from the head files, then each is compared with the same file on
+  the base: the (rule, reason) pair is counted on both sides, and if the head has more copies than the base
+  every finding relying on that pair is treated as added by the PR. An added ignore on a finding at or
+  above `failOn` is left unapplied (the finding stays kept, with a note); with the override label it is
+  applied; below `failOn` it is applied. All three cases are listed in the PR comment.
+- The override label is matched (case-insensitively) against the labels in the `pull_request` event
+  payload. Its name is the base config's `overrideLabel`, default `security-override`.
+- `git diff --name-only base...head` over the three settings files produces the "Scan settings changed in
+  this PR" notice.
+
+`local` mode keeps reading the working tree's config (it is a preview, there is nothing to defend), and
+`nightly` and `aggregate` read the default branch they run on. Scanner-native ignore mechanisms other than
+gitleaks' are still read from the PR head; see the README for the CODEOWNERS advice.
+
 ### Nightly mode: issues as state
 
 Each issue body carries `<!-- simpli-guard:finding:<id> tool=<tool> -->`. The nightly run

@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from simpli_guard.models import SEVERITY_ORDER, Category, Finding
+from simpli_guard.noise import AddedSuppression
 
 PR_MARKER = "<!-- simpli-guard:pr-comment -->"
 FINDING_MARKER_RE = re.compile(r"<!-- simpli-guard:finding:([0-9a-f]{8,64})(?: tool=([\w+\-]+))? -->")
@@ -94,6 +95,65 @@ def suppressed_block(findings: list[Finding], title: str) -> list[str]:
 # ---------- PR mode ----------
 
 
+def _code(text: str, limit: int = 160) -> str:
+    """Untrusted text as a one-line code span (a PR author wrote it)."""
+    one = _esc(text).replace("`", "'")
+    return f"`{one[:limit]}{'...' if len(one) > limit else ''}`"
+
+
+def _added_line(a: AddedSuppression, links: LinkContext) -> str:
+    f = a.finding
+    return (
+        f"- {f.severity.value} - **{_esc(f.title)}** - {_loc(f, links)} - {f.tool} `{f.rule_id}`"
+        f" - ignore {_code(a.selector, 80)}: {_code(a.reason)}"
+    )
+
+
+def added_suppressions_block(
+    added: list[AddedSuppression], links: LinkContext, fail_on: str, override_label: str
+) -> list[str]:
+    """Ignore comments the PR itself adds. Those on findings at or above failOn are not applied
+    unless a maintainer set the override label."""
+    held = [a for a in added if not a.applied]
+    applied = [a for a in added if a.applied]
+    label = f"`{override_label}`" if override_label else "the override label"
+    out: list[str] = []
+    if held:
+        out += [
+            "#### Suppressions added in this PR (not applied)",
+            "",
+            f"These findings are at or above **{fail_on}** and the PR adds the ignore comment that would "
+            "silence them. A PR cannot approve its own suppression, so they still count. "
+            f"A maintainer can apply them by adding the {label} label.",
+            "",
+        ]
+        out += [_added_line(a, links) for a in held]
+        out.append("")
+    if applied:
+        why = (
+            f"The {label} label is set, so they were applied."
+            if any(a.via_override for a in applied)
+            else f"They are below **{fail_on}**, so they were applied; listed for review."
+        )
+        out += ["#### Suppressions added in this PR (applied)", "", why, ""]
+        out += [_added_line(a, links) for a in applied]
+        out.append("")
+    return out
+
+
+def settings_changed_block(changed: list[str]) -> list[str]:
+    if not changed:
+        return []
+    names = ", ".join(f"`{c}`" for c in changed)
+    return [
+        "#### Scan settings changed in this PR",
+        "",
+        f"This PR changes {names}. Scan settings are read from the base branch, "
+        "so these changes apply after merge, not to this scan.",
+        "",
+    ]
+
+
 def pr_comment(
     name: str,
     new: list[Finding],
@@ -102,6 +162,9 @@ def pr_comment(
     fail_on: str,
     failed: bool,
     tool_notes: list[str],
+    added: list[AddedSuppression] | None = None,
+    settings_changed: list[str] | None = None,
+    override_label: str = "",
 ) -> str:
     kept_new = [f for f in new if f.kept]
     kept_existing = [f for f in existing if f.kept]
@@ -114,6 +177,8 @@ def pr_comment(
         lines.append("")
         lines += by_severity(kept_new, links, heading="####")
     lines += suppressed_block(new, "New findings suppressed as noise")
+    lines += added_suppressions_block(added or [], links, fail_on, override_label)
+    lines += settings_changed_block(settings_changed or [])
     if kept_existing:
         lines.append(
             f"Pre-existing findings on the base branch (not introduced here): {counts_line(kept_existing)}."
